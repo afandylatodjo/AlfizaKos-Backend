@@ -145,6 +145,10 @@ const MyRoom = (sqlz, Sqlz)=>{
         room_number: {
             type: Sqlz.STRING
 
+
+        },
+        room_price:{
+            type: Sqlz.STRING
         },
         avail: {
             type: Sqlz.TINYINT(1),
@@ -155,7 +159,6 @@ const MyRoom = (sqlz, Sqlz)=>{
     return Room;
 }
 
-
 const MyRent = (sqlz, Sqlz)=>{
     const Rent = sqlz.define("rent",{
         start_date:{
@@ -163,10 +166,24 @@ const MyRent = (sqlz, Sqlz)=>{
         },
         end_date:{
             type: Sqlz.STRING
+        },
+        paid: {
+            type: Sqlz.TINYINT(1),
+            allowNull: false,
+            defaultValue: 0
         }
     });
     return Rent;
 
+}
+
+const MyProof = (sqlz, Sqlz) =>{
+    const Proof = sqlz.define("proof", {
+        image_path: {
+            type: Sqlz.STRING
+        }
+    });
+    return Proof;
 }
 
 // Model - End
@@ -210,11 +227,10 @@ db.facility = MyRoomFacility(sequel, Sequelize);
 db.room = MyRoom(sequel, Sequelize);
 // TABLE of RENTS
 db.rent = MyRent(sequel, Sequelize);
+const Rent = db.rent;
+// TABLE of PAYMENT PROOF
+db.proof = MyProof(sequel, Sequelize);
 //
-
-
-
-
 
 // Relation
 db.role.hasMany(db.user);
@@ -228,14 +244,19 @@ db.facility.belongsTo(db.room);
 
 db.room.hasMany(db.user);
 
-db.rent.hasMany(db.user);
+db.user.hasMany(db.rent);
 db.rent.belongsTo(db.room);
+
+db.user.hasMany(db.proof);
+db.proof.belongsTo(db.room);
 //
+
 
 function createRole(arrays){
     Role.bulkCreate(
        arrays 
     ).then(()=>{
+        console.log("Role Created");
     }).catch((err)=>{
         console.log(err.message);
     });
@@ -243,7 +264,9 @@ function createRole(arrays){
 
 function createFloor(arrays){
    Floor.bulkCreate(arrays)
-   .then()
+   .then(()=>{
+        console.log("Role Created");
+   })
    .catch((err)=>{
     console.log(err.message);
    });
@@ -291,7 +314,7 @@ function encryptPassword(word, rounds){
 
 function lobying(req, res){
     const Loby = db.loby;
-    if(!req.body.user_name || !req.body.phone_number || !req.body.password)
+    if(!req.body.userName || !req.body.phoneNumber || !req.body.password)
     {
         res.json({msg:"Username and Phone Number cannot be Empty!", status: "OK"}); 
         return;
@@ -299,8 +322,8 @@ function lobying(req, res){
     
     
     Loby.create({
-        user_name: req.body.user_name,
-        phone_number: req.body.phone_number,
+        user_name: req.body.userName,
+        phone_number: req.body.phoneNumber,
         password: encryptPassword(req.body.password, 8),
         otp: generateOTP(6).toString(),
         role_id: req.body.role_id || "3"
@@ -434,7 +457,7 @@ function createUser(req, res) {
 
 function findAllUser(req, res){
     const userName =req.query.user_name;
-    let condition = userFirstName ? {user_name: {[Op.like] : `%${userFirstName}%`} } : null;
+    let condition = userName ? {user_name: {[Op.like] : `%${userName}%`} } : null;
 
     User.findAll({where: condition})
     .then((data) => {
@@ -448,7 +471,7 @@ function findAllUser(req, res){
 }
 
 function findAllUserByCondition(req, res){
-    const nameInclude = req.body.user_name;
+    const nameInclude = req.body.userName;
     User.findAll({
         where:{user_name: nameInclude}
     })
@@ -467,7 +490,7 @@ function findOneUser(req, res){
 
     User.findByPk(id)
     .then((data) => {
-        if(data){
+        if(data){user_name
             res.send(data);
         }
         else{
@@ -604,10 +627,6 @@ async function login(req, res){
 app.post("/register", lobying);
 app.delete("/register/user/:otp", validateOTP, destroyUserLobyById); //User created after destroyed 
 
-
-// User Router
-// app.post("/create/user", createUser);
-
 //Get Users - Start
 app.get("/user/:id", findOneUser);
 
@@ -633,8 +652,9 @@ app.post("/login", login);
 // Room Controller - Start
 async function createRoom(req, res, next){
     const Room = db.room;
-    const roomNumber = req.body.room_number;
-    const floorNumber = req.body.floor_number;
+    const roomNumber = req.body.roomNumber;
+    const floorNumber = req.body.floorNumber;
+    const roomPrice = req.body.roomPrice;
 
     if(!roomNumber || !floorNumber){
         res.json({msg: "Room Number and Floor Number Cannot be Empty!"});
@@ -644,12 +664,13 @@ async function createRoom(req, res, next){
 
     let roomData = {
         room_number: roomNumber,
-        floorId: floorNumber
+        floorId: floorNumber,
+        room_price: roomPrice
     }
 
     Room.create(roomData)
     .then((d)=>{
-        res.json({msg: "Room Crated Successfully!"});
+        res.json({msg: "Room Created Successfully!"});
     })
     .catch((e)=>{
         res.json({msg: "Cannot Create Room!"});
@@ -869,44 +890,221 @@ app.delete("/facility/delete", destroyFacility);
 app.put("/facility/update/:id", updateFacility);
 // facility Router - End
 
+// Payment Proof Controller - start
 
-// User Rent Room Controller - Start
-async function verifyUserRentToken(req, res, next){
-    const jwt = require("jsonwebtoken");
-    const token = req.body.userToken;
+// Saving image of room - Start
+const multer = require("multer");
+const path = require("path");
+const diskStorage = multer.diskStorage({
+    // Save to destinate folder
+    destination: function (req, file, cb){
+        cb(null, path.join(__dirname, "./uploads/payment-proof/"));
+    },
+    // Save to folder with custom filename
+    filename: function(req, file, cb){
+        cb(null, file.fieldname +"_"+ userName.toString().replace(" ", "").trim() + "_"+"paid"+ path.extname(file.originalname));
+    },
+});
 
-    jwt.verify(token, "SECRET_CODE", (err, decoded)=>{
-        if(err) return res.json({msg: "Unauthorized!"});
-        res.locals.id = decoded.id;
-    });
 
-    next();
+async function saveImageToDB(req, res, next){
+    const Proof = db.proof;
+    const User = db.user;
+
+    const fileName = "payment-proof_ahmad_paid.png"
+    const imagePath = path.join(__dirname, ("/uploads/payment-proof/"+fileName));
+    
+    User.findOne({where:{id: 1}})
+    .then((user)=>{
+        Proof.create({
+            image_path: imagePath,
+            userId: user.id 
+        })
+        .then(()=>{
+            next();
+        })
+        .catch(err=>{
+            res.json({msg: "Cannot save image!" + err.message});
+        })
+    })
+
+}
+// Saving image of room - end
+
+
+async function acceptProof(req, res){
+    res.json({msg: "You passed the upload section!"});
 }
 
-async function rentRoom(req, res, next){
-    const Room = db.room;
-    const userId = res.locals.id;
-    const roomNumber = req.body.room_number;
-    const roomFloor = req.body.room_floor;
-   
-    User.findByPk(userId)
+async function getPaymentProof(req, res){
+    const Proof = db.proof;
+    const User = db.user; 
+    const userName = req.body.userName;
+    const phoneNumber = req.body.phoneNumber;
+
+    User.findOne({where:{
+        user_name : userName,
+        phone_number: phoneNumber
+    }})
     .then((user)=>{
-        Room.findOne({
+        Proof.findOne({
             where:{
-                room_number : roomNumber,
-                floorId : roomFloor,
+                userId: user.id
             }
         })
-        .then((room)=>{
-            User.update({roomId: room.id})
-        });
+        .then((proof)=>{
+            const fileName = proof.image_path;
+            res.sendFile(fileName);
+        })
+        .catch((err)=>{
+            res.json({msg: "No Payment Proof Found!"})
+        })
     })
-    .catch((error)=>{
-        res.json({msg: "User not found!"});
-    });
-
+    .catch((err)=>{
+        res.json({msg: "User Not Found!"});
+    })
     
 }
+
+async function verifyPaymentProof(req, res){
+    const Room = db.room;
+    const User = db.user;
+
+    const userName = req.body.userName;
+    const phoneNumber = req.body.phoneNumber;
+    const roomNumber = req.body.roomNumber;
+    const floorNumber = req.body.floorNumber;
+
+    //Using 0 1 value to verify
+    const verified = req.body.verify >= 1 ? 1: 0
+
+    Room.findOne({where:{room_number: roomNumber, floorId: floorNumber}})
+    .then(async (room)=>{
+        console.log(room);
+        room.update({avail: (verified >= 1 ? 0 : 1)})
+        .then(()=>{
+            User.update({roomId: room.id}, {where:{
+                user_name: userName,
+                phone_number: phoneNumber
+            }})   
+            .then(()=>{
+                res.json({msg: "Payment has been verified"});
+            })
+            .catch((err)=>{
+                res.json({msg: "Cannot verify user payment!"});
+            })
+        })
+    })
+    .catch(err=>{
+        res.json({msg: "Cannot verify room payment!"});
+    })
+
+
+}
+// Payment Proof Controller - end
+ 
+
+// Payment Proof Routes - Start
+
+//Saving payment proof to folder
+// app.put("/room/payment/proof", multer({storage: diskStorage}).single("payment-proof"), acceptProof);
+app.put("/room/payment/proof", saveImageToDB, acceptProof);
+//Saving end
+
+// For admin to get the payment proof picture
+app.get("/room/payment/proof/user", getPaymentProof);
+// For admin to verify user payment
+app.put("/room/payment/proof/user/verify", verifyPaymentProof);
+
+// Payment Proof Routes - End
+ 
+
+// User Rent Room Controller - Start
+async function selectRoomToRent(req, res){
+    const Rent = db.rent;
+    const Room = db.room;
+    const User = db.user;
+
+    const roomNumber = req.body.roomNumber;
+    const floorNumber = req.body.roomNumber;
+    const userName = req.body.userName;
+    const phoneNumber = req.body.phoneNumber;
+
+    Room.findOne({where:{
+        room_number: roomNumber,
+        floorId: floorNumber 
+    }})
+    .then((room)=>{
+        User.findOne({where:{
+            user_name: userName,
+            phone_number: phoneNumber
+        }})
+        .then((user)=>{
+            Rent.create({
+                start_date : (Date.now()).toString(),
+                end_date: (Date.now()+30).toString(),
+                roomId: room.id,
+                userId: user.id
+            })
+            .then(()=>{
+                res.json({msg: "Room Selected Successfully"});
+            })
+            .catch((err)=>{
+                res.json({msg: "Can't Select Room to Rent!"});
+            })
+        })
+        .catch((err)=>{
+            res.json({msg: "Cannot find user"});
+        })
+
+    })
+    .catch((error)=>{
+        res.json({msg: "Cant Find Room!"});
+    });
+    
+}
+
+// Rent routes - Start
+
+// Rent routes - End
+
+
+// async function verifyUserRentToken(req, res, next){
+//     const jwt = require("jsonwebtoken");
+//     const token = req.body.userToken;
+
+//     jwt.verify(token, "SECRET_CODE", (err, decoded)=>{
+//         if(err) return res.json({msg: "Unauthorized!"});
+//         res.locals.id = decoded.id;
+//     });
+
+//     next();
+// }
+
+// async function rentRoom(req, res, next){
+//     const Room = db.room;
+//     const userId = res.locals.id;
+//     const roomNumber = req.body.room_number;
+//     const roomFloor = req.body.room_floor;
+   
+//     User.findByPk(userId)
+//     .then((user)=>{
+//         Room.findOne({
+//             where:{
+//                 room_number : roomNumber,
+//                 floorId : roomFloor,
+//             }
+//         })
+//         .then((room)=>{
+//             User.update({roomId: room.id})
+//         });
+//     })
+//     .catch((error)=>{
+//         res.json({msg: "User not found!"});
+//     });
+
+    
+// }
 
 // User Rent Room Controller - End
 
