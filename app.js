@@ -124,9 +124,9 @@ const MyLoby = (sqlz, Sqlz)=>{
 
 const MyRoomFacility = (sqlz, Sqlz)=>{
     const Facility = sqlz.define("facilitie", {
-        facility : {
+        item : {
             type: Sqlz.STRING
-        }
+        },
     });
     return Facility;
 }
@@ -144,9 +144,29 @@ const MyRoom = (sqlz, Sqlz)=>{
     const Room = sqlz.define("room", {
         room_number: {
             type: Sqlz.STRING
+
         },
+        avail: {
+            type: Sqlz.TINYINT(1),
+            allowNull: false,
+            defaultValue: 1
+        }
     });
     return Room;
+}
+
+
+const MyRent = (sqlz, Sqlz)=>{
+    const Rent = sqlz.define("rent",{
+        start_date:{
+            type: Sqlz.STRING
+        },
+        end_date:{
+            type: Sqlz.STRING
+        }
+    });
+    return Rent;
+
 }
 
 // Model - End
@@ -188,7 +208,11 @@ const Floor = db.floor;
 db.facility = MyRoomFacility(sequel, Sequelize);
 // TABLE of ROOMS
 db.room = MyRoom(sequel, Sequelize);
+// TABLE of RENTS
+db.rent = MyRent(sequel, Sequelize);
 //
+
+
 
 
 
@@ -203,6 +227,9 @@ db.room.hasMany(db.facility);
 db.facility.belongsTo(db.room);
 
 db.room.hasMany(db.user);
+
+db.rent.hasMany(db.user);
+db.rent.belongsTo(db.room);
 //
 
 function createRole(arrays){
@@ -338,6 +365,7 @@ async function destroyUserLobyById(res, res){
         res.json({msg: "Invalid OTP"});
     });
 }
+
 async function createUserAfterLobyFound(userName, phoneNumber, password, roleID){
     let userData = {};
 
@@ -568,6 +596,9 @@ async function login(req, res){
 
 //
 
+
+
+
 // Routers
 // Lobying Router for OTP, Register, Validating OTP and Creating User
 app.post("/register", lobying);
@@ -584,11 +615,11 @@ app.get("/users", findAllUser);
 
 app.get("/users/:id", findAllUserByCondition);
 
-app.put("/update/user/:id", updateUser);
+app.put("/user/update/:id", updateUser);
 
-app.delete("/delete/user/:id", deleteUser);
+app.delete("/user/delete/:id", deleteUser);
 
-app.delete("/delete/users", deleteAllUser);
+app.delete("/user/delete", deleteAllUser);
 // Get Users - End
 
 
@@ -598,22 +629,286 @@ app.post("/login", login);
 
 //
 
-// Rooms Controller - Start
-async function createRoom(req, res){
 
+// Room Controller - Start
+async function createRoom(req, res, next){
+    const Room = db.room;
+    const roomNumber = req.body.room_number;
+    const floorNumber = req.body.floor_number;
+
+    if(!roomNumber || !floorNumber){
+        res.json({msg: "Room Number and Floor Number Cannot be Empty!"});
+        return;
+    }
+
+
+    let roomData = {
+        room_number: roomNumber,
+        floorId: floorNumber
+    }
+
+    Room.create(roomData)
+    .then((d)=>{
+        res.json({msg: "Room Crated Successfully!"});
+    })
+    .catch((e)=>{
+        res.json({msg: "Cannot Create Room!"});
+    })
+};
+
+
+async function getRoomById(req, res){
+    const Room = db.room;
+    const roomId =req.params.id;
+    
+    Room.findByPk(roomId)
+    .then((room)=>{
+        res.json({msg: "Room Found!", roomNumber: room.room_number, available: room.avail});
+    })
+    .catch((err)=>{
+        res.json({msg: "Room not found!"});
+    })
+}
+
+
+async function getRoom(req, res){
+    const Room = db.room;
+    let roomData = [];
+    Room.findAll()
+    .then((rooms)=>{
+        rooms.forEach(element => {
+            roomData.push({
+                roomNumber: element.room_number,
+                available: element.avail == 1 ? "Yes" : "No",
+                floor: element.floorId,
+            });
+        });
+        res.json({roomData});
+    })
+    .catch((err)=>{
+        res.json({Error: err.message});
+    })
+}
+
+async function destroyRoomById(req, res){
+    const Room = db.room;
+    const roomId = req.params.id;
+
+    Room.destroy({
+        where:{
+            id: roomId
+        }
+    })
+    .then((d)=>{
+        res.json({msg: "Room destroyed successfully!", status: "OK"});
+    })
+    .catch((err)=>{
+        res.json({msg: "Cannot Destroy Room!"});
+    });
+}
+
+
+async function destroyRoom(req, res){
+    const Room = db.room;
+    Room.destroy()
+    .then((d)=>{
+        res.json({msg: "Room destroyed successfully!", status: "OK"});
+    })
+    .catch((err)=>{
+        res.json({msg: "Cannot Destroy Room!"});
+    });
+}
+
+
+async function updateRoom(req, res){
+    const Room = db.room;
+    const roomId = req.params.id;
+
+    let roomData = {
+        room_number: req.body.roomNumber,
+        avail : req.body.available,
+        floor_number: req.body.floorNumber
+    }
+
+    Room.update(roomData, {
+        where: {
+            id: roomId
+        }
+    })
+    .then(()=>{
+        res.json({msg: "Room Updated Successfully", update: roomData});
+    })
+    .catch((err)=>{
+        res.json({msg: "Error "+err.message});
+    })
 }
 // Rooms Controller - End
 
 // Rooms Router - Start
-app.get("/room/create");
+app.post("/room/create", createRoom);
+app.get("/room/:id", getRoomById);
+app.get("/rooms", getRoom);
+app.delete("/room/delete/:id", destroyRoomById);
+app.delete("/room/delete", destroyRoom);
+app.put("/room/update/:id", updateRoom);
 // Rooms Router - End
 
+// Facility Controller - Start
+async function createFacility(req, res, next){
+    const Facility = db.facility;
+    const itemName = req.body.item
 
-// Getting OTP Kode 
-// app.get("/register/otp", getAndSendOTP);
-//
+    if(!itemName){
+        res.json({msg: "Item Cannot be Empty!"});
+        return;
+    }
 
-// app.use("/user", userRouter);
+    let facilityData = {
+        item : itemName
+    };
+
+    Facility.create(facilityData)
+    .then((d)=>{
+        res.json({msg: "Facility Created Successfully!", status: "OK"});
+    })
+    .catch((e)=>{
+        res.json({msg: "Cannot Create Facility!"});
+    });
+};
+
+
+async function getFacilityById(req, res){
+    const Facility = db.facility;
+    const facilityId =req.params.id;
+    
+    Facility.findByPk(facilityId)
+    .then((facility)=>{
+        res.json({msg: "Item Found!", itemName: facility.item});
+    })
+    .catch((err)=>{
+        res.json({msg: "Item not found!"});
+    })
+}
+
+
+async function getFacility(req, res){
+    const Facility = db.facility;
+    let facilityData = [];
+    Facility.findAll()
+    .then((facilities)=>{
+        facilities.forEach(element => {
+            facilityData.push({
+                itemName : element.item 
+            });
+        });
+        res.json({roomData});
+    })
+    .catch((err)=>{
+        res.json({Error: err.message});
+    })
+}
+
+async function destroyFacilityById(req, res){
+    const Facility = db.facility;
+    const facilityId = req.params.id;
+
+    Room.destroy({
+        where:{
+            id: facilityId
+        }
+    })
+    .then((d)=>{
+        res.json({msg: "Facility destroyed successfully!", status: "OK"});
+    })
+    .catch((err)=>{
+        res.json({msg: "Cannot Destroy Facility!"});
+    });
+}
+
+
+async function destroyFacility(req, res){
+    const Facility = db.facility;
+    Facility.destroy()
+    .then((d)=>{
+        res.json({msg: "Facility destroyed successfully!", status: "OK"});
+    })
+    .catch((err)=>{
+        res.json({msg: "Cannot Destroy Facility!"});
+    });
+}
+
+
+async function updateFacility(req, res){
+    const Facility = db.facility;
+    const facilityId = req.params.id;
+
+    let facilityData = {
+        item : req.body.itemName,
+    };
+
+    Facility.update(facilityData, {
+        where: {
+            id: facilityId
+        }
+    })
+    .then(()=>{
+        res.json({msg: "Facility Updated Successfully", update: facilityData});
+    })
+    .catch((err)=>{
+        res.json({msg: "Error "+err.message});
+    })
+}
+// Facility Controller - End
+
+// Facility Router - Start
+app.post("/facility/create", createFacility);
+app.get("/facility/:id", getFacilityById);
+app.get("/facilities", getFacility);
+app.delete("/facility/delete/:id", destroyFacilityById);
+app.delete("/facility/delete", destroyFacility);
+app.put("/facility/update/:id", updateFacility);
+// facility Router - End
+
+
+// User Rent Room Controller - Start
+async function verifyUserRentToken(req, res, next){
+    const jwt = require("jsonwebtoken");
+    const token = req.body.userToken;
+
+    jwt.verify(token, "SECRET_CODE", (err, decoded)=>{
+        if(err) return res.json({msg: "Unauthorized!"});
+        res.locals.id = decoded.id;
+    });
+
+    next();
+}
+
+async function rentRoom(req, res, next){
+    const Room = db.room;
+    const userId = res.locals.id;
+    const roomNumber = req.body.room_number;
+    const roomFloor = req.body.room_floor;
+   
+    User.findByPk(userId)
+    .then((user)=>{
+        Room.findOne({
+            where:{
+                room_number : roomNumber,
+                floorId : roomFloor,
+            }
+        })
+        .then((room)=>{
+            User.update({roomId: room.id})
+        });
+    })
+    .catch((error)=>{
+        res.json({msg: "User not found!"});
+    });
+
+    
+}
+
+// User Rent Room Controller - End
 
 
 
