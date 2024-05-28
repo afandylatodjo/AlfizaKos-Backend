@@ -83,6 +83,9 @@ const MyUser = (sqlz, Sqlz) => {
         phone_number:{
             type: Sqlz.STRING
         },
+        email: {
+            type: Sqlz.STRING
+        },
         password:{
             type: Sqlz.STRING
         }
@@ -105,6 +108,9 @@ const MyLoby = (sqlz, Sqlz)=>{
             type: Sqlz.STRING
         },
         phone_number:{
+            type: Sqlz.STRING
+        },
+        email:{
             type: Sqlz.STRING
         },
         password:{
@@ -144,8 +150,6 @@ const MyRoom = (sqlz, Sqlz)=>{
     const Room = sqlz.define("room", {
         room_number: {
             type: Sqlz.STRING
-
-
         },
         room_price:{
             type: Sqlz.STRING
@@ -272,6 +276,17 @@ function createFloor(arrays){
    });
 }
 
+function createRooms(array){
+    const Room = db.room;
+    Room.bulkCreate(array)
+    .then(()=>{
+        console.log("Room Created");
+    })
+   .catch((err)=>{
+    console.log(err.message);
+   });
+}
+
 // Syncing DATABASE
 db.sequel.sync({force: true}).then(() => {
     createRole([
@@ -279,10 +294,41 @@ db.sequel.sync({force: true}).then(() => {
         {role: "PETUGAS"},
         {role: "PENGGUNA"},
     ]);
+    User.create({
+        "user_name": "AlfizaKos",
+        "phone_number": "628123456789",
+        "email": "AlfizaKos@gmail.com",
+        "password": encryptPassword("kosalfiza123", 8),
+        "roleId": 1,
+    });
     createFloor([
         {floor: "LANTAI_1"},
         {floor: "LANTAI_2"}
     ]);
+    let rooms =[]
+    for(let i=1; i<=20; i++){
+        if(i>10){
+         rooms.push(
+            {
+            "room_number": i.toString(),
+            "room_price": "800000",
+            "avail": 1,
+            "floorId": 2
+            }
+            );   
+        }else{
+        rooms.push(
+            {
+            "room_number": i.toString(),
+            "room_price": "800000",
+            "avail": 1,
+            "floorId": 1
+            }
+        );
+        }
+    }
+    createRooms(rooms);
+
 
     console.log("DB Re-Synced Successfuly");
 }).catch((err) => {
@@ -324,17 +370,18 @@ function lobying(req, res){
     Loby.create({
         user_name: req.body.userName,
         phone_number: req.body.phoneNumber,
+        email: req.body.email,
         password: encryptPassword(req.body.password, 8),
         otp: generateOTP(6).toString(),
         role_id: req.body.role_id || "3"
     }).then(({dataValues:{phone_number, otp}})=>{
-        console.log(phone_number);
-        res.json({msg: phone_number, code: otp});
+        res.json({msg: phone_number, code: otp, status: "OK"});
+        // console.log(phone_number);
         // client.sendMessage(
         //     `${phone_number}@c.us`,
         //     "Kode OTP Anda adalah "+otp
         // ).then(()=>{
-        //     res.json({msg: "OTP Terkirim!"});
+        //     res.json({msg: "OTP Terkirim!", status: "OK"});
         // }).catch((err)=>{
         //     res.json({msg: "OTP Tidak Terkirim: "+err.message});
         // })
@@ -358,7 +405,7 @@ function validateOTP(req, res, next){
         next();
     }).catch((e)=>{
         res.json({msg: "Invalid OTP!"});
-    })
+    });
 }
 
 async function destroyUserLobyById(res, res){
@@ -371,9 +418,11 @@ async function destroyUserLobyById(res, res){
         const userName = data[0].dataValues.user_name;
         const phoneNumber = data[0].dataValues.phone_number;
         const password = data[0].dataValues.password;
+        const email = data[0].dataValues.email;
         const roleId = data[0].dataValues.role_id;
+        console.log(email);
 
-        await createUserAfterLobyFound(userName, phoneNumber, password, roleId)
+        await createUserAfterLobyFound(userName, phoneNumber, email, password, roleId)
         .then(()=>{
             Loby.destroy({where:{id:id, otp:otp}})
             .then((e)=>{
@@ -389,10 +438,10 @@ async function destroyUserLobyById(res, res){
     });
 }
 
-async function createUserAfterLobyFound(userName, phoneNumber, password, roleID){
+async function createUserAfterLobyFound(userName, phoneNumber, email, password, roleID){
     let userData = {};
 
-    if(!userName || !phoneNumber){
+    if(!userName || !phoneNumber || !email){
         return;
     }
     Role.findByPk(roleID)
@@ -400,6 +449,7 @@ async function createUserAfterLobyFound(userName, phoneNumber, password, roleID)
         userData = {
             user_name: userName,
             phone_number: phoneNumber,
+            email: email,
             password: password,
             roleId: roleID
         };
@@ -407,6 +457,7 @@ async function createUserAfterLobyFound(userName, phoneNumber, password, roleID)
     .then(()=>{
         User.create(userData)
         .then((data)=>{
+            console.log(userData.email);
             console.log({msg: "User Created!"})
         })
         .catch((e)=>{
@@ -456,10 +507,10 @@ function createUser(req, res) {
 //Deprecated - end
 
 function findAllUser(req, res){
-    const userName =req.query.user_name;
-    let condition = userName ? {user_name: {[Op.like] : `%${userName}%`} } : null;
+    // const userName =req.query.user_name;
+    // let condition = userName ? {user_name: {[Op.like] : `%${userName}%`} } : null;
 
-    User.findAll({where: condition})
+    User.findAll()
     .then((data) => {
         res.send(data);
     })
@@ -471,9 +522,10 @@ function findAllUser(req, res){
 }
 
 function findAllUserByCondition(req, res){
-    const nameInclude = req.body.userName;
+    // const nameInclude = req.body.userName;
+    const userRole = req.params.roleId;
     User.findAll({
-        where:{user_name: nameInclude}
+        where:{roleId: userRole}
     })
     .then((data) => {
         res.send(data);
@@ -486,11 +538,14 @@ function findAllUserByCondition(req, res){
 }
 
 function findOneUser(req, res){ 
-    const id = req.params.id;
+    const userName = req.params.username;
 
-    User.findByPk(id)
+    User.findOne({where:{user_name: userName}})
     .then((data) => {
-        if(data){user_name
+        if(data)
+        {
+            console.log(data);
+            // user_name
             res.send(data);
         }
         else{
@@ -500,8 +555,9 @@ function findOneUser(req, res){
         }
     })
     .catch((err) => {
+        console.log(err.message);
         res.status(500).send({
-            msg: `Error while retrieving user with id: ${id}`
+            msg: `Error while retrieving user`
         });
     });
 }
@@ -575,19 +631,21 @@ async function login(req, res){
     const bcrypt = require("bcrypt");
     const jwt = require("jsonwebtoken");
     let isUser = false;
+    console.log(req.body.userName);
 
-    const userName = req.body.user_name;
-    const phoneNumber = req.body.phone_number;
+    const userName = req.body.userName;
+    const phoneNumber = req.body.phoneNumber;
+    const email = req.body.email;
     const password = req.body.password;
     let roleID;
     let accessToken;
     
-    User.findOne({where:{user_name: userName, phone_number: phoneNumber}})
+    User.findOne({where:{user_name: userName}})
     .then((user)=>{
-        if(bcrypt.compareSync(password, user.dataValues.password)){
+        if(bcrypt.compareSync(password, user.password)){
             roleID = user.roleId;
             accessToken = jwt.sign(
-                {id: user.dataValues.id}, 
+                {id: user.id}, 
                 "SECRET_CODE", 
                 {
                     algorithm: "HS256",
@@ -600,8 +658,10 @@ async function login(req, res){
     .then((data)=>{
         if(isUser){
             res.json({
+                status: "OK",
                 user_name: userName,
                 phone_number: phoneNumber,
+                email: email,
                 role: roleID,
                 token: accessToken
             });
@@ -628,11 +688,11 @@ app.post("/register", lobying);
 app.delete("/register/user/:otp", validateOTP, destroyUserLobyById); //User created after destroyed 
 
 //Get Users - Start
-app.get("/user/:id", findOneUser);
+app.get("/user/:username", findOneUser);
 
 app.get("/users", findAllUser);
 
-app.get("/users/:id", findAllUserByCondition);
+app.get("/users/:roleId", findAllUserByCondition);
 
 app.put("/user/update/:id", updateUser);
 
@@ -684,7 +744,7 @@ async function getRoomById(req, res){
     
     Room.findByPk(roomId)
     .then((room)=>{
-        res.json({msg: "Room Found!", roomNumber: room.room_number, available: room.avail});
+        res.json({msg: "Room Found!", roomNumber: room.room_number, roomFloor: room.floorId, available: room.avail});
     })
     .catch((err)=>{
         res.json({msg: "Room not found!"});
@@ -902,7 +962,7 @@ const diskStorage = multer.diskStorage({
     },
     // Save to folder with custom filename
     filename: function(req, file, cb){
-        cb(null, file.fieldname +"_"+ userName.toString().replace(" ", "").trim() + "_"+"paid"+ path.extname(file.originalname));
+        cb(null, file.fieldname +"_"+ req.params.username.toString().replace(" ", "").trim() + "_"+"paid"+ path.extname(file.originalname));
     },
 });
 
@@ -910,11 +970,16 @@ const diskStorage = multer.diskStorage({
 async function saveImageToDB(req, res, next){
     const Proof = db.proof;
     const User = db.user;
+    const username = req.params.username;
 
-    const fileName = "payment-proof_ahmad_paid.png"
-    const imagePath = path.join(__dirname, ("/uploads/payment-proof/"+fileName));
+    if(!username ){
+        console.log(username);
+        return;
+    }
+    // const fileName =username+".jpg";
+    const imagePath = path.join(__dirname, ("/uploads/payment-proof/"+"payment-proof_"+username+"_paid.jpg"));
     
-    User.findOne({where:{id: 1}})
+    User.findOne({where:{user_name: username}})
     .then((user)=>{
         Proof.create({
             image_path: imagePath,
@@ -933,18 +998,19 @@ async function saveImageToDB(req, res, next){
 
 
 async function acceptProof(req, res){
-    res.json({msg: "You passed the upload section!"});
+    res.json({msg: "Upload Success!", status: "OK"});
 }
 
 async function getPaymentProof(req, res){
     const Proof = db.proof;
     const User = db.user; 
-    const userName = req.body.userName;
-    const phoneNumber = req.body.phoneNumber;
+    const userName = req.params.username;
+    // const userName = req.body.userName;
+    // const phoneNumber = req.body.phoneNumber;
 
     User.findOne({where:{
         user_name : userName,
-        phone_number: phoneNumber
+        // phone_number: phoneNumber
     }})
     .then((user)=>{
         Proof.findOne({
@@ -971,12 +1037,13 @@ async function verifyPaymentProof(req, res){
     const User = db.user;
 
     const userName = req.body.userName;
-    const phoneNumber = req.body.phoneNumber;
     const roomNumber = req.body.roomNumber;
     const floorNumber = req.body.floorNumber;
 
     //Using 0 1 value to verify
-    const verified = req.body.verify >= 1 ? 1: 0
+
+    const verified = parseInt(req.body.verify)
+    verified = req.body.verify >= 1 ? 1: 0
 
     Room.findOne({where:{room_number: roomNumber, floorId: floorNumber}})
     .then(async (room)=>{
@@ -985,10 +1052,9 @@ async function verifyPaymentProof(req, res){
         .then(()=>{
             User.update({roomId: room.id}, {where:{
                 user_name: userName,
-                phone_number: phoneNumber
             }})   
             .then(()=>{
-                res.json({msg: "Payment has been verified"});
+                res.json({msg: "Payment has been verified", status: "OK"});
             })
             .catch((err)=>{
                 res.json({msg: "Cannot verify user payment!"});
@@ -1007,12 +1073,12 @@ async function verifyPaymentProof(req, res){
 // Payment Proof Routes - Start
 
 //Saving payment proof to folder
-// app.put("/room/payment/proof", multer({storage: diskStorage}).single("payment-proof"), acceptProof);
-app.put("/room/payment/proof", saveImageToDB, acceptProof);
+app.put("/room/payment/proof/:username", multer({storage: diskStorage}).single("payment-proof"),saveImageToDB, acceptProof);
+// app.put("/room/payment/proof/:username", saveImageToDB, acceptProof);
 //Saving end
 
 // For admin to get the payment proof picture
-app.get("/room/payment/proof/user", getPaymentProof);
+app.get("/room/payment/proof/user/:username", getPaymentProof);
 // For admin to verify user payment
 app.put("/room/payment/proof/user/verify", verifyPaymentProof);
 
@@ -1064,8 +1130,10 @@ async function selectRoomToRent(req, res){
     
 }
 
-// Rent routes - Start
+// Rent controllers - End
 
+// Rent routes - Start
+app.post("/room/rent/:id", selectRoomToRent);
 // Rent routes - End
 
 
@@ -1109,7 +1177,7 @@ async function selectRoomToRent(req, res){
 // User Rent Room Controller - End
 
 
-
-app.listen(port, () => {
-    console.log("Server listening in port,",port);
+const hostname = "0.0.0.0"
+app.listen(port, hostname, () => {
+    console.log("Host: "+hostname+" Server listening in port,",port);
 })
