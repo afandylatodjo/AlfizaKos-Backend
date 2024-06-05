@@ -18,41 +18,41 @@ app.use(express.urlencoded({ extended: true }));
 
 
 // Whatsapp Bot for sending OTP
-// const {Client, LocalAuth} = require("whatsapp-web.js");
-// const qrcode = require("qrcode-terminal");
-// const client = new Client({
-//     authStrategy: new LocalAuth(
-//         {
-//             dataPath: "./wa-bot/login",
-//             clientId: "wa-otp-bot"
-//         }
-//     ),
-//     puppeteer: {
-//         headless: true,
-//         args: [ '--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox'],
-//     },
-//     webVersionCache: { 
-//         type: 'remote', 
-//         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html', 
-//     }
-// });
+const {Client, LocalAuth} = require("whatsapp-web.js");
+const qrcode = require("qrcode-terminal");
+const client = new Client({
+    authStrategy: new LocalAuth(
+        {
+            dataPath: "./wa-bot/login",
+            clientId: "wa-otp-bot"
+        }
+    ),
+    puppeteer: {
+        headless: true,
+        args: [ '--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox'],
+    },
+    webVersionCache: { 
+        type: 'remote', 
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html', 
+    }
+});
 
 
-// client.on('qr', (qr)=>{
-//     console.log("QR GENERATED!");
-//     qrcode.generate(qr, {small: true});
-// });
+client.on('qr', (qr)=>{
+    console.log("QR GENERATED!");
+    qrcode.generate(qr, {small: true});
+});
 
-// client.on("authenticated", (auth)=>{
-//     console.log("Client Logged In!");
-// })
+client.on("authenticated", (auth)=>{
+    console.log("Client Logged In!");
+})
 
-// client.on("ready", ()=>{
-//     console.log("Client is ready!");
-// })
+client.on("ready", ()=>{
+    console.log("Client is ready!");
+})
 
 
-// client.initialize();
+client.initialize();
 //
 
 
@@ -381,16 +381,16 @@ function lobying(req, res) {
         otp: generateOTP(6).toString(),
         role_id: req.body.role_id || "3"
     }).then(({ dataValues: { phone_number, otp } }) => {
-        res.json({ msg: phone_number, code: otp, status: "OK" });
+        // res.json({ msg: phone_number, code: otp, status: "OK" });
         // console.log(phone_number);
-        // client.sendMessage(
-        //     `${phone_number}@c.us`,
-        //     "Kode OTP Anda adalah "+otp
-        // ).then(()=>{
-        //     res.json({msg: "OTP Terkirim!", status: "OK"});
-        // }).catch((err)=>{
-        //     res.json({msg: "OTP Tidak Terkirim: "+err.message});
-        // })
+        client.sendMessage(
+            `${phone_number}@c.us`,
+            "Kode OTP Anda adalah "+otp
+        ).then(()=>{
+            res.json({msg: "OTP Terkirim!", status: "OK"});
+        }).catch((err)=>{
+            res.json({msg: "OTP Tidak Terkirim: "+err.message});
+        })
     }).catch((err) => {
         res.json({ msg: "Registrasi Gagal Mohon Coba lagi beberapa waktu" });
     });
@@ -795,7 +795,7 @@ async function getRooms(req, res) {
                     floorNumber: element.floorId,
                 });
             });
-            res.json({ roomData });
+            res.send(roomData);
         })
         .catch((err) => {
             res.json({ Error: err.message });
