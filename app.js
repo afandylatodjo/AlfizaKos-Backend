@@ -1127,6 +1127,15 @@ app.put("/room/payment/proof/user/verify", verifyPaymentProof);
 
 
 // User Rent Room Controller - Start
+function setDate(date){
+    return new Date(Date.now() +  (date * 24 * 60 * 60 * 1000) );
+}
+
+function dateLinkFormater(date){
+    const format = date.toISOString().slice(0, 10);
+
+    return format;
+}
 async function selectRoomToRent(req, res) {
     const Rent = db.rent;
     const Room = db.room;
@@ -1149,9 +1158,11 @@ async function selectRoomToRent(req, res) {
                 }
             })
                 .then((user) => {
+
+                    let date = new Date();
                     Rent.create({
-                        start_date: (Date.now()).toString(),
-                        end_date: (Date.now() + 30).toString(),
+                        start_date: (dateLinkFormater(setDate(0))).toString(),
+                        end_date: (dateLinkFormater(setDate(30))).toString(),
                         paid: 1,
                         roomId: room.id,
                         userId: user.id
