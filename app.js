@@ -18,41 +18,41 @@ app.use(express.urlencoded({ extended: true }));
 
 
 // Whatsapp Bot for sending OTP
-const {Client, LocalAuth} = require("whatsapp-web.js");
-const qrcode = require("qrcode-terminal");
-const client = new Client({
-    authStrategy: new LocalAuth(
-        {
-            dataPath: "./wa-bot/login",
-            clientId: "wa-otp-bot"
-        }
-    ),
-    puppeteer: {
-        headless: true,
-        args: [ '--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox'],
-    },
-    webVersionCache: { 
-        type: 'remote', 
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html', 
-    }
-});
+// const {Client, LocalAuth} = require("whatsapp-web.js");
+// const qrcode = require("qrcode-terminal");
+// const client = new Client({
+//     authStrategy: new LocalAuth(
+//         {
+//             dataPath: "./wa-bot/login",
+//             clientId: "wa-otp-bot"
+//         }
+//     ),
+//     puppeteer: {
+//         headless: true,
+//         args: [ '--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox'],
+//     },
+//     webVersionCache: { 
+//         type: 'remote', 
+//         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html', 
+//     }
+// });
 
 
-client.on('qr', (qr)=>{
-    console.log("QR GENERATED!");
-    qrcode.generate(qr, {small: true});
-});
+// client.on('qr', (qr)=>{
+//     console.log("QR GENERATED!");
+//     qrcode.generate(qr, {small: true});
+// });
 
-client.on("authenticated", (auth)=>{
-    console.log("Client Logged In!");
-})
+// client.on("authenticated", (auth)=>{
+//     console.log("Client Logged In!");
+// })
 
-client.on("ready", ()=>{
-    console.log("Client is ready!");
-})
+// client.on("ready", ()=>{
+//     console.log("Client is ready!");
+// })
 
 
-client.initialize();
+// client.initialize();
 //
 
 
@@ -91,6 +91,14 @@ const MyUser = (sqlz, Sqlz) => {
         }
     });
     return User;
+}
+const MyUserPict = (sqlz, Sqlz) => {
+    const UserPict = sqlz.define("user_pict", {
+        image_path: {
+            type: Sqlz.STRING
+        }
+    });
+    return UserPict;
 }
 
 const MyRole = (sqlz, Sqlz) => {
@@ -223,6 +231,8 @@ db.sequel = sequel;
 
 // TABLE of USERS
 db.user = MyUser(sequel, Sequelize);
+// TABLE of USERPICTS
+db.upicts = MyUserPict(sequel, Sequelize);
 // TABLE of ROLES
 db.role = MyRole(sequel, Sequelize);
 const Role = db.role;
@@ -245,6 +255,9 @@ db.proof = MyProof(sequel, Sequelize);
 // Relation
 db.role.hasMany(db.user);
 db.user.belongsTo(db.role);
+
+db.upicts.hasOne(db.user);
+db.user.belongsTo(db.upicts);
 
 db.floor.hasMany(db.room);
 db.room.belongsTo(db.floor);
@@ -381,16 +394,16 @@ function lobying(req, res) {
         otp: generateOTP(6).toString(),
         role_id: req.body.role_id || "3"
     }).then(({ dataValues: { phone_number, otp } }) => {
-        // res.json({ msg: phone_number, code: otp, status: "OK" });
+        res.json({ msg: phone_number, code: otp, status: "OK" });
         // console.log(phone_number);
-        client.sendMessage(
-            `${phone_number}@c.us`,
-            "Kode OTP Anda adalah "+otp
-        ).then(()=>{
-            res.json({msg: "OTP Terkirim!", status: "OK"});
-        }).catch((err)=>{
-            res.json({msg: "OTP Tidak Terkirim: "+err.message});
-        })
+        // client.sendMessage(
+        //     `${phone_number}@c.us`,
+        //     "Kode OTP Anda adalah "+otp
+        // ).then(()=>{
+        //     res.json({msg: "OTP Terkirim!", status: "OK"});
+        // }).catch((err)=>{
+        //     res.json({msg: "OTP Tidak Terkirim: "+err.message});
+        // })
     }).catch((err) => {
         res.json({ msg: "Registrasi Gagal Mohon Coba lagi beberapa waktu" });
     });
@@ -426,7 +439,6 @@ async function destroyUserLobyById(res, res) {
             const password = data[0].dataValues.password;
             const email = data[0].dataValues.email;
             const roleId = data[0].dataValues.role_id;
-            console.log(email);
 
             await createUserAfterLobyFound(userName, phoneNumber, email, password, roleId)
                 .then(() => {
@@ -463,7 +475,6 @@ async function createUserAfterLobyFound(userName, phoneNumber, email, password, 
         .then(() => {
             User.create(userData)
                 .then((data) => {
-                    console.log(userData.email);
                     console.log({ msg: "User Created!" })
                 })
                 .catch((e) => {
@@ -549,15 +560,21 @@ function findOneUser(req, res) {
     const userName = req.params.username;
 
     User.findOne({ where: { user_name: userName } })
-        .then((data) => {
-            if (data) {
-                console.log(data);
+        .then((user) => {
+            if (user) {
+                const data = {
+                    "user_name": user.username,
+                    "email": user.email,
+                    "phone_number": user.phone_number,
+                    "role": user.roleId == 1 ? "admin" : "user",
+                };
+                // console.log(data);
                 // user_name
                 res.send(data);
             }
             else {
                 res.status(404).send({
-                    msg: `Cannot find user with id: ${id}`
+                    msg: `Cannot find user with username: ${userName}`
                 });
             }
         })
@@ -589,14 +606,19 @@ function findUserById(req, res) {
 }
 
 function updateUser(req, res) {
-    const id = req.params.id
+    const userName = req.params.username;
 
-    User.update(req.body, {
-        where: { id: id }
+    User.update({
+        user_name: req.body.username,
+        phone_number: req.body.phonenumber,
+        email: req.body.email,
+        password: encryptPassword(req.body.password, 8)
+    }, {
+        where: { user_name: userName }
     })
         .then((num) => {
             if (num == 1) {
-                res.send({ msg: "User updated successfully!" })
+                res.json({ msg: "User updated successfully!", status: "OK" });
             }
             else {
                 res.send({
@@ -651,13 +673,90 @@ function deleteAllUser(req, res) {
 }
 //
 
+// User Profile Controller - Start
+// Saving image of user pict - Start
+const multerPict = require("multer");
+const pathPict = require("path");
+const diskStoragePict = multerPict.diskStorage({
+    // Save to destinate folder
+    destination: function (req, file, cb) {
+        cb(null, pathPict.join(__dirname, "./uploads/profile-pict/"));
+    },
+    // Save to folder with custom filename
+    filename: function (req, file, cb) {
+        cb(null, file.fieldname + "_" + req.params.username.toString().replace(" ", "").trim() + "_user" + path.extname(file.originalname));
+    },
+});
+
+
+async function savePictToDB(req, res) {
+    const Pict = db.upicts;
+    const User = db.user;
+    const username = req.params.username;
+
+    if (!username) {
+        return;
+    }
+    const imagePath = path.join(__dirname, ("./uploads/profile-pict/" + "profile-pict" + username.toString().replace(" ", "").trim() + "_user.jpg"));
+
+    User.findOne({ where: { user_name: username } })
+        .then((user) => {
+            Pict.create({
+                image_path: imagePath,
+            })
+                .then((pict) => {
+                    user.update({ userPictId: pict.id })
+                    .then((user)=>{
+                        res.json({msg: "Image Saved to DB", status: "OK"});
+                    })
+                })
+                .catch(err => {
+                    res.json({ msg: "Cannot save image!" + err.message });
+                })
+        })
+}
+async function uploadProfilePict(req, res) {
+
+}
+
+async function getProfilePict(req, res) {
+    const User = db.user;
+    const Pict = db.upicts;
+    const username = req.params.username;
+
+    User.findOne({ where: { user_name: username } })
+        .then((user) => {
+            if (user.userPictId == null) {
+                const image = pathPict.join(__dirname, ("./uploads/profile-pict/image_placeholder.jpg"));
+                res.sendFile(image);
+            } else {
+                Pict.findOne({ where: { id: user.PictId } })
+                    .then((pict) => {
+                        res.sendFile(pict.image_path);
+                    })
+                    .catch((err) => {
+                        res.json({ msg: "Cannot find user picture", status: "empty" });
+                    });
+            }
+        })
+        .catch((err) => {
+            res.json({ msg: "Cannot find user", status: "empty" });
+        })
+
+
+}
+// User Profile Controller - End
+// User Profile Route - Start
+app.put("/user/profile/upload/:username", multerPict({ storage: diskStoragePict }).single("profile-pict"), savePictToDB, acceptFile);
+// app.put("/user/profile/upload/:username", uploadProfilePict);
+app.get("/user/profile/:username", getProfilePict);
+// User Profile Route - End
 
 //Login - Start
 async function login(req, res) {
     const bcrypt = require("bcrypt");
     const jwt = require("jsonwebtoken");
     let isUser = false;
-    console.log(req.body.userName);
 
     const userName = req.body.userName;
     const password = req.body.password;
@@ -685,7 +784,6 @@ async function login(req, res) {
         })
         .then((data) => {
             if (isUser) {
-                console.log(phoneNumber);
                 res.json({
                     status: "OK",
                     user_name: userName,
@@ -697,7 +795,6 @@ async function login(req, res) {
             }
         })
         .catch((err) => {
-            console.log(err.message);
             res.json({
                 msg: "User or Password Wrong!",
                 token: null
@@ -724,9 +821,9 @@ app.get("/users", findAllUser);
 
 app.get("/users/:roleId", findAllUserByCondition);
 
-app.put("/user/update/:id", updateUser);
+app.put("/user/update/:username", updateUser);
 
-app.delete("/user/delete/:id", deleteUser);
+app.delete("/user/delete/:username", deleteUser);
 
 app.delete("/user/delete", deleteAllUser);
 // Get Users - End
@@ -1004,7 +1101,6 @@ async function saveImageToDB(req, res, next) {
     const username = req.params.username;
 
     if (!username) {
-        console.log(username);
         return;
     }
     // const fileName =username+".jpg";
@@ -1028,7 +1124,7 @@ async function saveImageToDB(req, res, next) {
 // Saving image of room - end
 
 
-async function acceptProof(req, res) {
+async function acceptFile(req, res) {
     res.json({ msg: "Upload Success!", status: "OK" });
 }
 
@@ -1077,8 +1173,7 @@ async function verifyPaymentProof(req, res) {
 
     Room.findOne({ where: { room_number: roomNumber, floorId: floorNumber } })
         .then((room) => {
-            console.log(room);
-            Rent.update({ is_verified: 1  }, { where: { roomId: room.id } })
+            Rent.update({ is_verified: 1 }, { where: { roomId: room.id } })
                 .then((r) => {
                     room.update({ avail: 0 }, { where: { id: room.id } })
                         .then(() => {
@@ -1099,7 +1194,7 @@ async function verifyPaymentProof(req, res) {
                         });
                 })
                 .catch((err) => {
-                    res.json({msg: "ERROR WITH: "+err.message});
+                    res.json({ msg: "ERROR WITH: " + err.message });
                 });
         })
         .catch(err => {
@@ -1114,7 +1209,7 @@ async function verifyPaymentProof(req, res) {
 // Payment Proof Routes - Start
 
 //Saving payment proof to folder
-app.put("/room/payment/proof/:username", multer({ storage: diskStorage }).single("payment-proof"), saveImageToDB, acceptProof);
+app.put("/room/payment/proof/:username", multer({ storage: diskStorage }).single("payment-proof"), saveImageToDB, acceptFile);
 // app.put("/room/payment/proof/:username", saveImageToDB, acceptProof);
 //Saving end
 
@@ -1127,11 +1222,11 @@ app.put("/room/payment/proof/user/verify", verifyPaymentProof);
 
 
 // User Rent Room Controller - Start
-function setDate(date){
-    return new Date(Date.now() +  (date * 24 * 60 * 60 * 1000) );
+function setDate(date) {
+    return new Date(Date.now() + (date * 24 * 60 * 60 * 1000));
 }
 
-function dateLinkFormater(date){
+function dateLinkFormater(date) {
     const format = date.toISOString().slice(0, 10);
 
     return format;
@@ -1235,11 +1330,9 @@ async function getAllSelectedRoom(req, res) {
         ]
     })
         .then((rents) => {
-            console.log(rents);
             res.send(rents);
         })
         .catch((err) => {
-            console.log("Error: " + err.message);
             res.send([]);
         });
 }
@@ -1266,7 +1359,6 @@ async function getAllSelectedRoomByCondition(req, res) {
                 ]
             })
                 .then((rents) => {
-                    console.log("RENTS BY CONDITION: ", rents);
                     res.send(rents);
                 })
                 .catch((err) => {
