@@ -204,6 +204,33 @@ const MyProof = (sqlz, Sqlz) => {
     return Proof;
 }
 
+const MySubscribe = (sqlz, Sqlz) => {
+    const Subs = sqlz.define("subscribe", {
+        due: {
+            type: Sqlz.STRING
+        }
+    })
+    return Subs;
+}
+
+const MyNotification = (sqlz, Sqlz) => {
+    const Notif = sqlz.define("notification", {
+        title: {
+            type: Sqlz.STRING(64)
+        },
+        content: {
+            type: Sqlz.STRING(1000)
+        },
+        is_read: {
+            type: Sqlz.TINYINT(1),
+            allowNull: false,
+            defaultValue: 0
+        },
+
+    })
+    return Notif;
+}
+
 // Model - End
 
 // Initialize Sequelize
@@ -250,7 +277,12 @@ db.rent = MyRent(sequel, Sequelize);
 const Rent = db.rent;
 // TABLE of PAYMENT PROOF
 db.proof = MyProof(sequel, Sequelize);
+// TABLE of SUBSCRIBE
+db.subs = MySubscribe(sequel, Sequelize);
+// TABLE of NOTIFICATION
+db.notif = MyNotification(sequel, Sequelize);
 //
+
 
 // Relation
 db.role.hasMany(db.user);
@@ -273,6 +305,16 @@ db.rent.belongsTo(db.user);
 
 db.user.hasMany(db.proof);
 db.proof.belongsTo(db.room);
+
+db.user.hasMany(db.subs);
+db.rent.hasMany(db.subs);
+db.room.hasMany(db.subs);
+db.subs.belongsTo(db.user);
+
+db.user.hasMany(db.notif);
+db.notif.belongsTo(db.room);
+db.notif.belongsTo(db.rent);
+db.notif.belongsTo(db.user);
 //
 
 
@@ -706,9 +748,9 @@ async function savePictToDB(req, res) {
             })
                 .then((pict) => {
                     user.update({ userPictId: pict.id })
-                    .then((user)=>{
-                        res.json({msg: "Image Saved to DB", status: "OK"});
-                    })
+                        .then((user) => {
+                            res.json({ msg: "Image Saved to DB", status: "OK" });
+                        })
                 })
                 .catch(err => {
                     res.json({ msg: "Cannot save image!" + err.message });
@@ -1165,6 +1207,7 @@ async function verifyPaymentProof(req, res) {
     const Room = db.room;
     const User = db.user;
     const Rent = db.rent;
+    const Notif = db.notif;
 
     const userName = req.body.userName;
     const roomNumber = req.body.roomNumber;
@@ -1174,7 +1217,7 @@ async function verifyPaymentProof(req, res) {
     Room.findOne({ where: { room_number: roomNumber, floorId: floorNumber } })
         .then((room) => {
             Rent.update({ is_verified: 1 }, { where: { roomId: room.id } })
-                .then((r) => {
+                .then((rent) => {
                     room.update({ avail: 0 }, { where: { id: room.id } })
                         .then(() => {
                             User.update({ roomId: room.id }, {
@@ -1182,8 +1225,27 @@ async function verifyPaymentProof(req, res) {
                                     user_name: userName,
                                 }
                             })
-                                .then(() => {
-                                    res.json({ msg: "Payment has been verified", status: "OK" });
+                                .then((user) => {
+                                    Rent.findOne({ where: { roomId: room.id } })
+                                        .then((nref) => {
+                                            User.findOne({ where: { roomId: room.id } })
+                                                .then((nuser) => {
+                                                    Notif.create({
+                                                        title: "Masa Tenggat",
+                                                        content: "Silahkan Perpanjang Masa Sewa Kos Anda",
+                                                        userId: nuser.id,
+                                                        roomId: room.id,
+                                                        rentId: nref.id
+                                                    })
+                                                        .then(() => {
+                                                            res.json({ msg: "Payment has been verified", status: "OK" });
+                                                        })
+                                                        .catch(() => {
+                                                            res.json({ msg: "Cannot create notification", status: "failed" });
+                                                        })
+                                                })
+                                        })
+
                                 })
                                 .catch((err) => {
                                     res.json({ msg: "Cannot verify user payment!", status: "failed" });
@@ -1255,19 +1317,21 @@ async function selectRoomToRent(req, res) {
                 .then((user) => {
 
                     let date = new Date();
-                    Rent.create({
+
+                    Rent.upsert({
                         start_date: (dateLinkFormater(setDate(0))).toString(),
                         end_date: (dateLinkFormater(setDate(30))).toString(),
                         paid: 1,
                         roomId: room.id,
                         userId: user.id
-                    })
+                    }, {where:{roomId: room.id, userId: user.id}})
                         .then(() => {
                             res.json({ msg: "Room Selected Successfully", status: "OK" });
                         })
                         .catch((err) => {
                             res.json({ msg: "Can't Select Room to Rent!", status: "failed" });
                         })
+
                 })
                 .catch((err) => {
                     res.json({ msg: "Cannot find user", error: err.message });
@@ -1310,6 +1374,7 @@ async function getSelectedRoom(req, res) {
 
 }
 
+//TODO: Get All RENTS for Admin Langganan
 async function getAllSelectedRoom(req, res) {
     const Rent = db.rent;
     const User = db.user;
@@ -1380,44 +1445,143 @@ app.get("/rents/:userName", getAllSelectedRoomByCondition);
 // Rent routes - End
 
 
-// async function verifyUserRentToken(req, res, next){
-//     const jwt = require("jsonwebtoken");
-//     const token = req.body.userToken;
+// Notification Controller - Start
 
-//     jwt.verify(token, "SECRET_CODE", (err, decoded)=>{
-//         if(err) return res.json({msg: "Unauthorized!"});
-//         res.locals.id = decoded.id;
-//     });
 
-//     next();
+// function formatISOtoUTC(ISOStringDate) {
+//     const isoDate = new Date(ISOStringDate);
+//     const year = isoDate.getUTCYear(isoDate);
+//     const month = isoDate.getUTCMonth(isoDate);
+//     const date = isoDate.getUTCDate(isoDate);
+
+//     const fullDate = `${date}/${month}/${year}`
+//     return fullDate;
 // }
 
-// async function rentRoom(req, res, next){
-//     const Room = db.room;
-//     const userId = res.locals.id;
-//     const roomNumber = req.body.room_number;
-//     const roomFloor = req.body.room_floor;
+// function getDueDate(startDate, endDate) {
+//     const datentime = require("date-and-time");
 
-//     User.findByPk(userId)
-//     .then((user)=>{
-//         Room.findOne({
-//             where:{
-//                 room_number : roomNumber,
-//                 floorId : roomFloor,
-//             }
-//         })
-//         .then((room)=>{
-//             User.update({roomId: room.id})
-//         });
-//     })
-//     .catch((error)=>{
-//         res.json({msg: "User not found!"});
-//     });
+//     const start = startDate.split("-")
+//     const startYear = start[0];
+//     const startMonth = start[1];
+//     const sDate = start[2];
 
+//     const end = endDate.split("-")
+//     const endYear = end[0];
+//     const endMonth = end[1];
+//     const eDate = end[2];
 
+//     return parseInt(datentime.subtract(
+//         new Date(endYear, endMonth, eDate),
+//         new Date(startYear, startMonth, sDate))
+//         .toDays() - 1).toString();
 // }
 
-// User Rent Room Controller - End
+function calculateDueFromMils(isoString) {
+    const dueDay = (new Date(isoString) - Date.now()) / 86_400_000;
+    return Math.ceil(dueDay);
+}
+async function formatAllNotif(notifs, role) {
+    let newNotifs = [];
+    notifs.forEach((n) => {
+        const dueDate = calculateDueFromMils(n.rent["end_date"]);
+        if (dueDate > 5 && role == "3") return;
+        newNotifs.push({
+            "id": n.id,
+            "username": n.user["user_name"],
+            "title": n.title,
+            "content": n.content,
+            "is_read": n.is_read > 0 ? "1" : "0",
+            "start_date": n.rent["start_date"],
+            "end_date": n.rent["end_date"],
+            "due": dueDate.toString(),
+            "paid": n.rent["paid"] > 0 ? "1" : "0",
+            "verified": n.rent["is_verified"] > 0 ? "1" : 0,
+            "room_number": n.room["room_number"],
+            "floor_number": n.room["floorId"].toString()
+        })
+    })
+    return newNotifs;
+}
+
+async function readNotif(req, res) {
+    const notifId = req.params.notifId;
+    try {
+        await Notif.update({ is_read: 1 }, { where: { id: notifId } });
+        res.json({ msg: "Notif is read!", status: "OK" });
+    }
+    catch (err) {
+        res.json({ msg: "Cannot read Notif!", status: "failed" });
+    }
+}
+
+async function getAllNotification(req, res) {
+    const Notif = db.notif;
+    Notif.findAll()
+        .then((notifs) => {
+            formatAllNotif(notifs, "1")
+                .then((value) => {
+                    res.send(value);
+                });
+        })
+        .catch((err) => {
+            res.json({ msg: "Cannot get notification!", status: "empty" });
+        });
+}
+
+async function getAllUserNotificationByCondition(req, res) {
+    const Notif = db.notif;
+    const User = db.user;
+    const Rent = db.rent;
+    const Room = db.room;
+    const username = req.params.username;
+
+    try {
+        User.findOne({ where: { user_name: username } })
+            .then((user) => {
+                Notif.findAll({
+                    where: { userId: user.id },
+                    include: [
+                        {
+                            model: User,
+                            attributes: ["user_name", "roomId"],
+                        },
+                        {
+                            model: Rent,
+                            attributes: ["start_date", "end_date", "paid", "is_verified",],
+                        },
+                        {
+                            model: Room,
+                            attributes: ["room_number", "floorId"]
+                        }
+                    ],
+                })
+                    .then((notif) => {
+                        formatAllNotif(notif, user.roleId.toString())
+                            .then((notifs) => {
+                                res.send(notifs);
+                            })
+                    })
+                    .catch((err) => {
+                        res.json({ msg: "Cannot find notif", status: "empty", error: err.message });
+                    });
+            })
+    }
+    catch (err) {
+        res.json({ msg: "Something Went Wrong!", status: "failed" });
+    }
+
+
+}
+// Notification Controller - End
+
+// Notification Routes - Start
+app.get("/user/notifs", getAllNotification);
+app.get("/user/notif/:username", getAllUserNotificationByCondition);
+app.put("/user/notif/read/:notifId", readNotif);
+
+// Notification Routes - End
+
 
 
 const hostname = "0.0.0.0"
