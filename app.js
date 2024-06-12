@@ -199,6 +199,9 @@ const MyProof = (sqlz, Sqlz) => {
     const Proof = sqlz.define("proof", {
         image_path: {
             type: Sqlz.STRING
+        },
+        for_room: {
+            type: Sqlz.STRING,
         }
     });
     return Proof;
@@ -350,7 +353,7 @@ function createRooms(array) {
 }
 
 // Syncing DATABASE
-db.sequel.sync({ force:true }).then(() => {
+db.sequel.sync({ force: true }).then(() => {
     createRole([
         { role: "ADMIN" },
         { role: "PETUGAS" },
@@ -1125,6 +1128,17 @@ app.put("/facility/update/:id", updateFacility);
 // Saving image of room - Start
 const multer = require("multer");
 const path = require("path");
+const { error } = require("console");
+
+function imageTrailName() {
+    let digits = "0123456789";
+    let rand = "";
+    for (let i = 0; i < 8; i++) {
+        rand += digits[Math.floor(Math.random() * 10)];
+    }
+    return rand;
+}
+const proofImageDate = new Date();
 const diskStorage = multer.diskStorage({
     // Save to destinate folder
     destination: function (req, file, cb) {
@@ -1132,7 +1146,7 @@ const diskStorage = multer.diskStorage({
     },
     // Save to folder with custom filename
     filename: function (req, file, cb) {
-        cb(null, file.fieldname + "_" + req.params.username.toString().replace(" ", "").trim() + "_" + "paid" + path.extname(file.originalname));
+        cb(null, file.fieldname + "_" + req.params.username.toString().replaceAll(" ", "").trim() + "_" + "paid" + (proofImageDate.toISOString().replaceAll(" ", "").trim()) + (imageTrailName()+"_") + path.extname(file.originalname));
     },
 });
 
@@ -1140,25 +1154,34 @@ const diskStorage = multer.diskStorage({
 async function saveImageToDB(req, res, next) {
     const Proof = db.proof;
     const User = db.user;
+    const Room = db.room;
     const username = req.params.username;
+    const room = (parseInt(req.params.room)).toString();
+    const floor = parseInt(req.params.floor);
 
     if (!username) {
         return;
     }
     // const fileName =username+".jpg";
-    const imagePath = path.join(__dirname, ("/uploads/payment-proof/" + "payment-proof_" + username + "_paid.jpg"));
+    const imagePath = path.join(__dirname, ("./uploads/payment-proof/") + req.file.filename);
+    // const imagePath = req.file.filename;
 
     User.findOne({ where: { user_name: username } })
         .then((user) => {
-            Proof.create({
-                image_path: imagePath,
-                userId: user.id
-            })
-                .then(() => {
-                    next();
-                })
-                .catch(err => {
-                    res.json({ msg: "Cannot save image!" + err.message });
+            Room.findOne({ where: { room_number: room, floorId: floor } })
+                .then((r) => {
+                    Proof.create({
+                        image_path: imagePath,
+                        userId: user.id,
+                        for_room: r.id
+                    })
+                        .then(() => {
+                            next();
+                        })
+                        .catch(err => {
+                            res.json({ msg: "Cannot save image!" + err.message });
+                        })
+
                 })
         })
 
@@ -1173,7 +1196,10 @@ async function acceptFile(req, res) {
 async function getPaymentProof(req, res) {
     const Proof = db.proof;
     const User = db.user;
+    const Room = db.room;
     const userName = req.params.username;
+    const room = (parseInt(req.params.room)).toString();
+    const floor = parseInt(req.params.floor);
     // const userName = req.body.userName;
     // const phoneNumber = req.body.phoneNumber;
 
@@ -1184,18 +1210,23 @@ async function getPaymentProof(req, res) {
         }
     })
         .then((user) => {
-            Proof.findOne({
-                where: {
-                    userId: user.id
-                }
-            })
-                .then((proof) => {
-                    const fileName = proof.image_path;
-                    res.sendFile(fileName);
+            Room.findOne({ where: { room_number: room, floorId: floor } })
+                .then((r) => {
+                    Proof.findOne({
+                        where: {
+                            userId: user.id,
+                            for_room: r.id
+                        }
+                    })
+                        .then((proof) => {
+                            const fileName = proof.image_path;
+                            res.sendFile(fileName);
+                        })
+                        .catch((err) => {
+                            res.json({ msg: "No Payment Proof Found!", error: err.message })
+                        })
                 })
-                .catch((err) => {
-                    res.json({ msg: "No Payment Proof Found!" })
-                })
+
         })
         .catch((err) => {
             res.json({ msg: "User Not Found!" });
@@ -1246,12 +1277,12 @@ async function verifyPaymentProof(req, res) {
 // Payment Proof Routes - Start
 
 //Saving payment proof to folder
-app.put("/room/payment/proof/:username", multer({ storage: diskStorage }).single("payment-proof"), saveImageToDB, acceptFile);
+app.put("/room/payment/proof/:room/:floor/:username", multer({ storage: diskStorage }).single("payment-proof"), saveImageToDB, acceptFile);
 // app.put("/room/payment/proof/:username", saveImageToDB, acceptProof);
 //Saving end
 
 // For admin to get the payment proof picture
-app.get("/room/payment/proof/user/:username", getPaymentProof);
+app.get("/room/payment/proof/user/:room/:floor/:username", getPaymentProof);
 // For admin to verify user payment
 app.put("/room/payment/proof/user/verify", verifyPaymentProof);
 
@@ -1522,7 +1553,7 @@ async function updateRent(req, res) {
             .then((r) => {
                 res.json({ msg: "Date updated successfully", status: "OK" });
             })
-            .catch((err)=>{
+            .catch((err) => {
                 res.json({ msg: "Date failed to update", status: "OK", error: err.message });
             })
     }
@@ -1543,8 +1574,8 @@ async function deleteRent(req, res) {
     User.findOne({ where: { user_name: username } })
         .then((user) => {
             Room.findOne({ where: { room_number: roomnumber, floorId: floornumber } })
-                .then( async (room) => {
-                    await room.update({avail: 1, userId: null}, {where:{userId: user.id}})
+                .then(async (room) => {
+                    await room.update({ avail: 1, userId: null }, { where: { userId: user.id } })
                     Rent.destroy({ where: { userId: user.id, roomId: room.id } })
                         .then((rent) => {
                             console.log(rent);
