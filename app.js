@@ -18,41 +18,41 @@ app.use(express.urlencoded({ extended: true }));
 
 
 // Whatsapp Bot for sending OTP
-const {Client, LocalAuth} = require("whatsapp-web.js");
-const qrcode = require("qrcode-terminal");
-const client = new Client({
-    authStrategy: new LocalAuth(
-        {
-            dataPath: "./wa-bot/login",
-            clientId: "wa-otp-bot"
-        }
-    ),
-    puppeteer: {
-        headless: true,
-        args: [ '--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox'],
-    },
-    webVersionCache: { 
-        type: 'remote', 
-        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html', 
-    }
-});
+// const {Client, LocalAuth} = require("whatsapp-web.js");
+// const qrcode = require("qrcode-terminal");
+// const client = new Client({
+//     authStrategy: new LocalAuth(
+//         {
+//             dataPath: "./wa-bot/login",
+//             clientId: "wa-otp-bot"
+//         }
+//     ),
+//     puppeteer: {
+//         headless: true,
+//         args: [ '--no-sandbox', '--disable-gpu', '--disable-setuid-sandbox'],
+//     },
+//     webVersionCache: { 
+//         type: 'remote', 
+//         remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html', 
+//     }
+// });
 
 
-client.on('qr', (qr)=>{
-    console.log("QR GENERATED!");
-    qrcode.generate(qr, {small: true});
-});
+// client.on('qr', (qr)=>{
+//     console.log("QR GENERATED!");
+//     qrcode.generate(qr, {small: true});
+// });
 
-client.on("authenticated", (auth)=>{
-    console.log("Client Logged In!");
-})
+// client.on("authenticated", (auth)=>{
+//     console.log("Client Logged In!");
+// })
 
-client.on("ready", ()=>{
-    console.log("Client is ready!");
-})
+// client.on("ready", ()=>{
+//     console.log("Client is ready!");
+// })
 
 
-client.initialize();
+// client.initialize();
 //
 
 
@@ -439,16 +439,16 @@ function lobying(req, res) {
         otp: generateOTP(6).toString(),
         role_id: req.body.role_id || "3"
     }).then(({ dataValues: { phone_number, otp } }) => {
-        // res.json({ msg: phone_number, code: otp, status: "OK" });
+        res.json({ msg: phone_number, code: otp, status: "OK" });
         // console.log(phone_number);
-        client.sendMessage(
-            `${phone_number}@c.us`,
-            "Kode OTP Anda adalah "+otp
-        ).then(()=>{
-            res.json({msg: "OTP Terkirim!", status: "OK"});
-        }).catch((err)=>{
-            res.json({msg: "OTP Tidak Terkirim: "+err.message});
-        })
+        // client.sendMessage(
+        //     `${phone_number}@c.us`,
+        //     "Kode OTP Anda adalah "+otp
+        // ).then(()=>{
+        //     res.json({msg: "OTP Terkirim!", status: "OK"});
+        // }).catch((err)=>{
+        //     res.json({msg: "OTP Tidak Terkirim: "+err.message});
+        // })
     }).catch((err) => {
         res.json({ msg: "Registrasi Gagal Mohon Coba lagi beberapa waktu" });
     });
@@ -673,7 +673,7 @@ function updateUser(req, res) {
         })
         .catch((err) => {
             res.status(500).send({
-                msg: `Error updating user with id: ${id}`
+                msg: `Error updating user : ${username}`
             });
         });
 }
@@ -742,7 +742,7 @@ async function savePictToDB(req, res) {
     if (!username) {
         return;
     }
-    const imagePath = path.join(__dirname, ("./uploads/profile-pict/" + "profile-pict" + username.toString().replace(" ", "").trim() + "_user.jpg"));
+    const imagePath = path.join(__dirname, ("./uploads/profile-pict/" + "profile-pict_" + username.toString().replace(" ", "").trim() + "_user.jpg"));
 
     User.findOne({ where: { user_name: username } })
         .then((user) => {
@@ -750,7 +750,7 @@ async function savePictToDB(req, res) {
                 image_path: imagePath,
             })
                 .then((pict) => {
-                    user.update({ userPictId: pict.id })
+                    user.update({ userPictId: pict.id }, {where: {id: user.id}})
                         .then((user) => {
                             res.json({ msg: "Image Saved to DB", status: "OK" });
                         })
@@ -775,12 +775,12 @@ async function getProfilePict(req, res) {
                 const image = pathPict.join(__dirname, ("./uploads/profile-pict/image_placeholder.jpg"));
                 res.sendFile(image);
             } else {
-                Pict.findOne({ where: { id: user.PictId } })
+                Pict.findOne({ where: { id: user.userPictId } })
                     .then((pict) => {
                         res.sendFile(pict.image_path);
                     })
                     .catch((err) => {
-                        res.json({ msg: "Cannot find user picture", status: "empty" });
+                        res.json({ msg: "Cannot find user picture", status: "empty", error:err.message });
                     });
             }
         })
