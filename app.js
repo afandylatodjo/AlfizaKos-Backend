@@ -78,13 +78,16 @@ const dbConfig = {
 const MyUser = (sqlz, Sqlz) => {
     const User = sqlz.define("user", {
         user_name: {
-            type: Sqlz.STRING
+            type: Sqlz.STRING,
+            unique: true
         },
         phone_number: {
-            type: Sqlz.STRING
+            type: Sqlz.STRING,
+            unique: true
         },
         email: {
-            type: Sqlz.STRING
+            type: Sqlz.STRING,
+            unique: true
         },
         password: {
             type: Sqlz.STRING
@@ -113,13 +116,16 @@ const MyRole = (sqlz, Sqlz) => {
 const MyLoby = (sqlz, Sqlz) => {
     const Loby = sqlz.define("lobie", {
         user_name: {
-            type: Sqlz.STRING
+            type: Sqlz.STRING,
+            unique: true
         },
         phone_number: {
-            type: Sqlz.STRING
+            type: Sqlz.STRING,
+            unique: true
         },
         email: {
-            type: Sqlz.STRING
+            type: Sqlz.STRING,
+            unique: true
         },
         password: {
             type: Sqlz.STRING
@@ -1746,8 +1752,8 @@ app.put("/user/notif/read/:notifId", readNotif);
 
 
 
-const hostname = "0.0.0.0"
-app.listen(port, hostname, () => {
-    console.log("Host: " + hostname + " Server listening in port,", port);
+const hostnameIp = process.env.HOST_IP; 
+app.listen(port, hostnameIp, () => {
+    console.log("Host: " + hostnameIp + " Server listening in port,", port);
 })
 
